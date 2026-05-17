@@ -7,28 +7,25 @@ const CITY = 'Melbourne,AU';
 async function getWeather() {
     const weatherContent = document.getElementById('weather-content');
     try {
-        // Using forecast endpoint to get min/max and rain chance
         const url = `https://api.openweathermap.org/data/2.5/forecast?q=${CITY}&appid=${API_KEY}&units=metric&cnt=8`;
         const response = await fetch(url);
         if (!response.ok) throw new Error();
         const data = await response.json();
 
-        const current   = data.list[0];
-        const temp      = Math.round(current.main.temp);
-        const feelsLike = Math.round(current.main.feels_like);
+        const current    = data.list[0];
+        const temp       = Math.round(current.main.temp);
+        const feelsLike  = Math.round(current.main.feels_like);
         const description = current.weather[0].description;
-        const humidity  = current.main.humidity;
-        const wind      = Math.round(current.wind.speed * 3.6);
-
-        // Min/max and rain chance across next 24 hours
-        const minTemp   = Math.round(Math.min(...data.list.map(e => e.main.temp_min)));
-        const maxTemp   = Math.round(Math.max(...data.list.map(e => e.main.temp_max)));
+        const humidity   = current.main.humidity;
+        const wind       = Math.round(current.wind.speed * 3.6);
+        const minTemp    = Math.round(Math.min(...data.list.map(e => e.main.temp_min)));
+        const maxTemp    = Math.round(Math.max(...data.list.map(e => e.main.temp_max)));
         const rainChance = Math.round(Math.max(...data.list.map(e => e.pop || 0)) * 100);
 
         weatherContent.innerHTML = `
             <div class="weather-temp">${temp}°C</div>
             <div class="weather-description">${description}</div>
-            <div class="weather-minmax">↑ ${maxTemp}°C &nbsp;&nbsp; ↓ ${minTemp}°C</div>
+            <div class="weather-minmax">↓ ${minTemp}°C &nbsp;&nbsp; ↑ ${maxTemp}°C</div>
             <div class="weather-details">
                 <div class="weather-detail-item">Feels like: <span>${feelsLike}°C</span></div>
                 <div class="weather-detail-item">Humidity: <span>${humidity}%</span></div>
@@ -53,13 +50,18 @@ async function getManUtd() {
         const response = await fetch(`https://www.thesportsdb.com/api/v1/json/3/eventsnext.php?id=${MANUTD_ID}`);
         const data = await response.json();
 
-        // Skip any match that kicked off more than 2 hours ago
         const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
         const events = data.events || [];
+
         const nextMatch = events.find(event => {
-            if (!event.strTime || !event.dateEvent) return true;
-            const matchTime = new Date(`${event.dateEvent}T${event.strTime}Z`);
-            return matchTime > twoHoursAgo;
+            if (!event.dateEvent || !event.strTime) return true; // No time info — include it
+            try {
+                const matchTime = new Date(`${event.dateEvent}T${event.strTime}Z`);
+                if (isNaN(matchTime.getTime())) return true; // Unparseable date — include it
+                return matchTime > twoHoursAgo;
+            } catch {
+                return true; // Any error — include it
+            }
         });
 
         const badgeHTML = `
@@ -68,7 +70,6 @@ async function getManUtd() {
             </div>
         `;
 
-        // No upcoming fixtures found
         if (!nextMatch) {
             content.innerHTML = `
                 ${badgeHTML}
@@ -80,7 +81,6 @@ async function getManUtd() {
             return;
         }
 
-        // Format kick-off time in Melbourne timezone
         let melbourneTime = 'Date TBD';
         if (nextMatch.strTime) {
             const dt = new Date(`${nextMatch.dateEvent}T${nextMatch.strTime}Z`);
@@ -159,15 +159,16 @@ function createChart(canvasId, labels, values) {
                         color: '#c9a227',
                         font: { size: 10 },
                         maxRotation: 0,
-                        // Only show a label at the start of each new month
+                        autoSkip: false, // We control which labels show via callback
                         callback: function(value, index) {
-                            const label   = this.getLabelForValue(value);
-                            const date    = new Date(label);
+                            const label = this.getLabelForValue(value);
+                            const date  = new Date(label);
                             if (index === 0) return date.toLocaleString('default', { month: 'short' });
-                            const prev    = new Date(this.getLabelForValue(value - 1));
+                            const prev  = new Date(this.getLabelForValue(value - 1));
+                            // Only show label when month changes
                             return date.getMonth() !== prev.getMonth()
                                 ? date.toLocaleString('default', { month: 'short' })
-                                : '';
+                                : null;
                         }
                     },
                     grid: { display: false }
@@ -295,7 +296,6 @@ async function getBrent() {
 getWeather();
 getManUtd();
 
-// Cached items load instantly. Uncached items staggered 13s apart.
 const spyCached   = !!getCache('spy');
 const audCached   = !!getCache('audusd');
 const brentCached = !!getCache('brent');
