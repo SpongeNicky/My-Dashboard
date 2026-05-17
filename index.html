@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Dashboard</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a1a2e">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>My Dashboard</h1>
+
+        <!-- Weather Card -->
+        <div class="card card-weather">
+            <h2>🌤️ Melbourne Weather</h2>
+            <div id="weather-content">
+                <p class="loading">Loading weather...</p>
+            </div>
+        </div>
+
+        <!-- Manchester United Card -->
+        <div class="card card-manutd">
+            <h2>⚽ Manchester United</h2>
+            <div id="manutd-content">
+                <p class="loading">Loading fixtures...</p>
+            </div>
+        </div>
+
+        <!-- Finance Card -->
+        <div class="card card-finance">
+            <h2>💰 Markets</h2>
+
+            <div class="finance-item">
+                <div class="finance-header">
+                    <span class="finance-label">S&P 500</span>
+                    <span class="finance-value" id="spy-value"><span class="loading">Loading...</span></span>
+                </div>
+                <div class="chart-wrapper"><canvas id="spy-chart"></canvas></div>
+            </div>
+
+            <div class="finance-divider"></div>
+
+            <div class="finance-item">
+                <div class="finance-header">
+                    <span class="finance-label">AUD / USD</span>
+                    <span class="finance-value" id="audusd-value"><span class="loading">Loading...</span></span>
+                </div>
+                <div class="chart-wrapper"><canvas id="audusd-chart"></canvas></div>
+            </div>
+
+            <div class="finance-divider"></div>
+
+            <div class="finance-item">
+                <div class="finance-header">
+                    <span class="finance-label">Brent Crude</span>
+                    <span class="finance-value" id="brent-value"><span class="loading">Loading...</span></span>
+                </div>
+                <div class="chart-wrapper"><canvas id="brent-chart"></canvas></div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
