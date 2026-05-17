@@ -12,15 +12,15 @@ async function getWeather() {
         if (!response.ok) throw new Error();
         const data = await response.json();
 
-        const current    = data.list[0];
-        const temp       = Math.round(current.main.temp);
-        const feelsLike  = Math.round(current.main.feels_like);
+        const current     = data.list[0];
+        const temp        = Math.round(current.main.temp);
+        const feelsLike   = Math.round(current.main.feels_like);
         const description = current.weather[0].description;
-        const humidity   = current.main.humidity;
-        const wind       = Math.round(current.wind.speed * 3.6);
-        const minTemp    = Math.round(Math.min(...data.list.map(e => e.main.temp_min)));
-        const maxTemp    = Math.round(Math.max(...data.list.map(e => e.main.temp_max)));
-        const rainChance = Math.round(Math.max(...data.list.map(e => e.pop || 0)) * 100);
+        const humidity    = current.main.humidity;
+        const wind        = Math.round(current.wind.speed * 3.6);
+        const minTemp     = Math.round(Math.min(...data.list.map(e => e.main.temp_min)));
+        const maxTemp     = Math.round(Math.max(...data.list.map(e => e.main.temp_max)));
+        const rainChance  = Math.round(Math.max(...data.list.map(e => e.pop || 0)) * 100);
 
         weatherContent.innerHTML = `
             <div class="weather-temp">${temp}°C</div>
@@ -41,28 +41,17 @@ async function getWeather() {
 // ========================
 // MANCHESTER UNITED
 // ========================
-const MANUTD_ID = '133612';
+const MANUTD_KEY  = '66';
 const MANUTD_BADGE = 'https://upload.wikimedia.org/wikipedia/en/7/7a/Manchester_United_FC_crest.svg';
 
 async function getManUtd() {
     const content = document.getElementById('manutd-content');
     try {
-        const response = await fetch(`https://www.thesportsdb.com/api/v1/json/3/eventsnext.php?id=${MANUTD_ID}`);
+        const response = await fetch(
+            'https://api.football-data.org/v4/teams/66/matches?status=SCHEDULED&limit=1',
+            { headers: { 'X-Auth-Token': MANUTD_KEY } }
+        );
         const data = await response.json();
-
-        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-        const events = data.events || [];
-
-        const nextMatch = events.find(event => {
-            if (!event.dateEvent || !event.strTime) return true; // No time info — include it
-            try {
-                const matchTime = new Date(`${event.dateEvent}T${event.strTime}Z`);
-                if (isNaN(matchTime.getTime())) return true; // Unparseable date — include it
-                return matchTime > twoHoursAgo;
-            } catch {
-                return true; // Any error — include it
-            }
-        });
 
         const badgeHTML = `
             <div class="manutd-badge-row">
@@ -70,7 +59,7 @@ async function getManUtd() {
             </div>
         `;
 
-        if (!nextMatch) {
+        if (!data.matches || data.matches.length === 0) {
             content.innerHTML = `
                 ${badgeHTML}
                 <div class="match-section">
@@ -81,27 +70,28 @@ async function getManUtd() {
             return;
         }
 
-        let melbourneTime = 'Date TBD';
-        if (nextMatch.strTime) {
-            const dt = new Date(`${nextMatch.dateEvent}T${nextMatch.strTime}Z`);
-            melbourneTime = dt.toLocaleString('en-AU', {
-                timeZone: 'Australia/Melbourne',
-                weekday: 'short',
-                day: 'numeric',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        } else if (nextMatch.dateEvent) {
-            melbourneTime = nextMatch.dateEvent;
-        }
+        const match  = data.matches[0];
+        const home   = match.homeTeam.name;
+        const away   = match.awayTeam.name;
+        const league = match.competition.name;
+
+        // utcDate is already UTC — convert directly to Melbourne time
+        const dt = new Date(match.utcDate);
+        const melbourneTime = dt.toLocaleString('en-AU', {
+            timeZone: 'Australia/Melbourne',
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
 
         content.innerHTML = `
             ${badgeHTML}
             <div class="match-section">
                 <div class="match-label">NEXT MATCH</div>
-                <div class="match-league">${nextMatch.strLeague}</div>
-                <div class="match-teams">${nextMatch.strHomeTeam} vs ${nextMatch.strAwayTeam}</div>
+                <div class="match-league">${league}</div>
+                <div class="match-teams">${home} vs ${away}</div>
                 <div class="match-time">🕐 ${melbourneTime} (Melb time)</div>
             </div>
         `;
@@ -133,13 +123,17 @@ function setCache(key, data) {
 }
 
 function createChart(canvasId, labels, values) {
+    const step        = Math.max(1, Math.floor(labels.length / 26));
+    const chartLabels = labels.filter((_, i) => i % step === 0 || i === labels.length - 1);
+    const chartValues = values.filter((_, i) => i % step === 0 || i === values.length - 1);
+
     const ctx = document.getElementById(canvasId).getContext('2d');
     new Chart(ctx, {
         type: 'line',
         data: {
-            labels,
+            labels: chartLabels,
             datasets: [{
-                data: values,
+                data: chartValues,
                 borderColor: '#FFD700',
                 backgroundColor: 'rgba(255, 215, 0, 0.1)',
                 borderWidth: 2,
@@ -159,16 +153,11 @@ function createChart(canvasId, labels, values) {
                         color: '#c9a227',
                         font: { size: 10 },
                         maxRotation: 0,
-                        autoSkip: false, // We control which labels show via callback
-                        callback: function(value, index) {
+                        autoSkip: true,
+                        maxTicksLimit: 7,
+                        callback: function(value) {
                             const label = this.getLabelForValue(value);
-                            const date  = new Date(label);
-                            if (index === 0) return date.toLocaleString('default', { month: 'short' });
-                            const prev  = new Date(this.getLabelForValue(value - 1));
-                            // Only show label when month changes
-                            return date.getMonth() !== prev.getMonth()
-                                ? date.toLocaleString('default', { month: 'short' })
-                                : null;
+                            return new Date(label).toLocaleString('default', { month: 'short' });
                         }
                     },
                     grid: { display: false }
