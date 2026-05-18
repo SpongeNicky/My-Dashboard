@@ -11,7 +11,6 @@ async function getWeather() {
         const response = await fetch(url);
         if (!response.ok) throw new Error();
         const data = await response.json();
-
         const current     = data.list[0];
         const temp        = Math.round(current.main.temp);
         const feelsLike   = Math.round(current.main.feels_like);
@@ -21,7 +20,6 @@ async function getWeather() {
         const minTemp     = Math.round(Math.min(...data.list.map(e => e.main.temp_min)));
         const maxTemp     = Math.round(Math.max(...data.list.map(e => e.main.temp_max)));
         const rainChance  = Math.round(Math.max(...data.list.map(e => e.pop || 0)) * 100);
-
         weatherContent.innerHTML = `
             <div class="weather-temp">${temp}°C</div>
             <div class="weather-description">${description}</div>
@@ -41,14 +39,16 @@ async function getWeather() {
 // ========================
 // MANCHESTER UNITED
 // ========================
-const MANUTD_KEY  = '66';
+const MANUTD_KEY   = '66';
 const MANUTD_BADGE = 'https://upload.wikimedia.org/wikipedia/en/7/7a/Manchester_United_FC_crest.svg';
 
 async function getManUtd() {
     const content = document.getElementById('manutd-content');
     try {
+        // Use dateFrom instead of status filter — catches all upcoming match statuses
+        const today = new Date().toISOString().split('T')[0];
         const response = await fetch(
-            'https://api.football-data.org/v4/teams/66/matches?status=SCHEDULED&limit=1',
+            `https://api.football-data.org/v4/teams/66/matches?dateFrom=${today}&limit=3`,
             { headers: { 'X-Auth-Token': MANUTD_KEY } }
         );
         const data = await response.json();
@@ -74,9 +74,7 @@ async function getManUtd() {
         const home   = match.homeTeam.name;
         const away   = match.awayTeam.name;
         const league = match.competition.name;
-
-        // utcDate is already UTC — convert directly to Melbourne time
-        const dt = new Date(match.utcDate);
+        const dt     = new Date(match.utcDate);
         const melbourneTime = dt.toLocaleString('en-AU', {
             timeZone: 'Australia/Melbourne',
             weekday: 'short',
@@ -103,7 +101,7 @@ async function getManUtd() {
 // ========================
 // FINANCE HELPERS
 // ========================
-const AV_KEY = 'Z7JLBIQRL23AJ2AT';
+const AV_KEY      = 'Z7JLBIQRL23AJ2AT';
 const CACHE_HOURS = 4;
 
 function getCache(key) {
@@ -120,6 +118,13 @@ function setCache(key, data) {
     try {
         localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
     } catch {}
+}
+
+// All 3 charts use same 130-day window so they start from the same date
+function filterDays(entries, days = 130) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    return entries.filter(([date]) => new Date(date) >= cutoff);
 }
 
 function createChart(canvasId, labels, values) {
@@ -179,12 +184,6 @@ function createChart(canvasId, labels, values) {
     });
 }
 
-function filterSixMonths(entries) {
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    return entries.filter(([date]) => new Date(date) >= sixMonthsAgo);
-}
-
 function changeTag(latest, prev) {
     const change = ((latest - prev) / prev * 100).toFixed(2);
     const cls  = change >= 0 ? 'change-up' : 'change-down';
@@ -210,7 +209,7 @@ async function getSPY() {
         const data = await res.json();
         if (!data['Time Series (Daily)']) throw new Error();
         let entries = Object.entries(data['Time Series (Daily)']).sort(([a], [b]) => new Date(a) - new Date(b));
-        entries = filterSixMonths(entries);
+        entries = filterDays(entries);
         const labels = entries.map(([d]) => d);
         const values = entries.map(([, v]) => parseFloat(v['4. close']));
         setCache('spy', { labels, values });
@@ -238,7 +237,7 @@ async function getAUDUSD() {
         const data = await res.json();
         if (!data['Time Series FX (Daily)']) throw new Error();
         let entries = Object.entries(data['Time Series FX (Daily)']).sort(([a], [b]) => new Date(a) - new Date(b));
-        entries = filterSixMonths(entries);
+        entries = filterDays(entries);
         const labels = entries.map(([d]) => d);
         const values = entries.map(([, v]) => parseFloat(v['4. close']));
         setCache('audusd', { labels, values });
@@ -269,7 +268,7 @@ async function getBrent() {
             .filter(d => d.value !== '.')
             .map(d => [d.date, d.value])
             .sort(([a], [b]) => new Date(a) - new Date(b));
-        entries = filterSixMonths(entries);
+        entries = filterDays(entries);
         const labels = entries.map(([d]) => d);
         const values = entries.map(([, v]) => parseFloat(v));
         setCache('brent', { labels, values });
