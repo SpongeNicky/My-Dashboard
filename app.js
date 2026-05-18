@@ -39,18 +39,24 @@ async function getWeather() {
 // ========================
 // MANCHESTER UNITED
 // ========================
-const MANUTD_KEY   = '66';
+const MANUTD_ID    = '133612';
 const MANUTD_BADGE = 'https://upload.wikimedia.org/wikipedia/en/7/7a/Manchester_United_FC_crest.svg';
 
 async function getManUtd() {
     const content = document.getElementById('manutd-content');
     try {
-        const today    = new Date().toISOString().split('T')[0];
-        const response = await fetch(
-            `https://api.football-data.org/v4/teams/66/matches?dateFrom=${today}&limit=3`,
-            { headers: { 'X-Auth-Token': MANUTD_KEY } }
-        );
-        const data = await response.json();
+        const response = await fetch(`https://www.thesportsdb.com/api/v1/json/3/eventsnext.php?id=${MANUTD_ID}`);
+        const data     = await response.json();
+
+        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+        const events      = data.events || [];
+        const nextMatch   = events.find(event => {
+            if (!event.dateEvent || !event.strTime) return true;
+            try {
+                const t = new Date(`${event.dateEvent}T${event.strTime}Z`);
+                return isNaN(t.getTime()) ? true : t > twoHoursAgo;
+            } catch { return true; }
+        });
 
         const badgeHTML = `
             <div class="manutd-badge-row">
@@ -58,37 +64,33 @@ async function getManUtd() {
             </div>
         `;
 
-        if (!data.matches || data.matches.length === 0) {
-            content.innerHTML = `
-                ${badgeHTML}
+        if (!nextMatch) {
+            content.innerHTML = `${badgeHTML}
                 <div class="match-section">
                     <div class="match-label">NEXT MATCH</div>
                     <div class="match-tbc">No fixtures scheduled yet — check back soon</div>
-                </div>
-            `;
+                </div>`;
             return;
         }
 
-        const match  = data.matches[0];
-        const home   = match.homeTeam.name;
-        const away   = match.awayTeam.name;
-        const league = match.competition.name;
-        const dt     = new Date(match.utcDate);
-        const melbourneTime = dt.toLocaleString('en-AU', {
-            timeZone: 'Australia/Melbourne',
-            weekday: 'short',
-            day: 'numeric',
-            month: 'short',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        let melbourneTime = 'Date TBD';
+        if (nextMatch.strTime) {
+            const dt = new Date(`${nextMatch.dateEvent}T${nextMatch.strTime}Z`);
+            melbourneTime = dt.toLocaleString('en-AU', {
+                timeZone: 'Australia/Melbourne',
+                weekday: 'short', day: 'numeric', month: 'short',
+                hour: '2-digit', minute: '2-digit'
+            });
+        } else if (nextMatch.dateEvent) {
+            melbourneTime = nextMatch.dateEvent;
+        }
 
         content.innerHTML = `
             ${badgeHTML}
             <div class="match-section">
                 <div class="match-label">NEXT MATCH</div>
-                <div class="match-league">${league}</div>
-                <div class="match-teams">${home} vs ${away}</div>
+                <div class="match-league">${nextMatch.strLeague}</div>
+                <div class="match-teams">${nextMatch.strHomeTeam} vs ${nextMatch.strAwayTeam}</div>
                 <div class="match-time">🕐 ${melbourneTime} (Melb time)</div>
             </div>
         `;
@@ -100,18 +102,15 @@ async function getManUtd() {
 // ========================
 // FINANCE HELPERS
 // ========================
-const AV_KEY = 'Z7JLBIQRL23AJ2AT';
-
-// Cache resets automatically each new day — no manual clearing needed
-const TODAY = new Date().toDateString();
+const AV_KEY  = 'Z7JLBIQRL23AJ2AT';
+const TODAY   = new Date().toDateString();
 
 function getCache(key) {
     try {
         const item = localStorage.getItem(key);
         if (!item) return null;
         const { date, data } = JSON.parse(item);
-        if (date !== TODAY) return null; // New day = fetch fresh data
-        return data;
+        return date === TODAY ? data : null;
     } catch { return null; }
 }
 
@@ -129,17 +128,23 @@ function filterDays(entries, days = 130) {
 
 function createChart(canvasId, labels, values) {
     const step        = Math.max(1, Math.floor(labels.length / 26));
-    const chartLabels = labels.filter((_, i) => i % step === 0 || i === labels.length - 1);
+    const chartDates  = labels.filter((_, i) => i % step === 0 || i === labels.length - 1);
     const chartValues = values.filter((_, i) => i % step === 0 || i === values.length - 1);
 
-    // Track shown months to prevent duplicates like "Jan Jan"
-    const shownMonths = new Set();
+    // Pre-build tick labels: month name at first occurrence, '' everywhere else
+    const seen       = new Set();
+    const tickLabels = chartDates.map(date => {
+        const m = new Date(date).toLocaleString('default', { month: 'short' });
+        if (seen.has(m)) return '';
+        seen.add(m);
+        return m;
+    });
 
     const ctx = document.getElementById(canvasId).getContext('2d');
     new Chart(ctx, {
         type: 'line',
         data: {
-            labels: chartLabels,
+            labels: tickLabels,
             datasets: [{
                 data: chartValues,
                 borderColor: '#FFD700',
@@ -161,14 +166,10 @@ function createChart(canvasId, labels, values) {
                         color: '#c9a227',
                         font: { size: 10 },
                         maxRotation: 0,
-                        autoSkip: true,
-                        maxTicksLimit: 7,
+                        autoSkip: false,
                         callback: function(value) {
-                            const label     = this.getLabelForValue(value);
-                            const monthName = new Date(label).toLocaleString('default', { month: 'short' });
-                            if (shownMonths.has(monthName)) return null;
-                            shownMonths.add(monthName);
-                            return monthName;
+                            const label = this.getLabelForValue(value);
+                            return label || null; // hide empty slots completely
                         }
                     },
                     grid: { display: false }
@@ -198,7 +199,7 @@ function changeTag(latest, prev) {
 }
 
 // ========================
-// S&P 500
+// SPY (S&P 500 ETF)
 // ========================
 function displaySPY(labels, values) {
     const latest = values[values.length - 1];
