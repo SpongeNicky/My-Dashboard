@@ -45,8 +45,7 @@ const MANUTD_BADGE = 'https://upload.wikimedia.org/wikipedia/en/7/7a/Manchester_
 async function getManUtd() {
     const content = document.getElementById('manutd-content');
     try {
-        // Use dateFrom instead of status filter — catches all upcoming match statuses
-        const today = new Date().toISOString().split('T')[0];
+        const today    = new Date().toISOString().split('T')[0];
         const response = await fetch(
             `https://api.football-data.org/v4/teams/66/matches?dateFrom=${today}&limit=3`,
             { headers: { 'X-Auth-Token': MANUTD_KEY } }
@@ -101,26 +100,27 @@ async function getManUtd() {
 // ========================
 // FINANCE HELPERS
 // ========================
-const AV_KEY      = 'Z7JLBIQRL23AJ2AT';
-const CACHE_HOURS = 4;
+const AV_KEY = 'Z7JLBIQRL23AJ2AT';
+
+// Cache resets automatically each new day — no manual clearing needed
+const TODAY = new Date().toDateString();
 
 function getCache(key) {
     try {
         const item = localStorage.getItem(key);
         if (!item) return null;
-        const { ts, data } = JSON.parse(item);
-        if (Date.now() - ts > CACHE_HOURS * 3600000) return null;
+        const { date, data } = JSON.parse(item);
+        if (date !== TODAY) return null; // New day = fetch fresh data
         return data;
     } catch { return null; }
 }
 
 function setCache(key, data) {
     try {
-        localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+        localStorage.setItem(key, JSON.stringify({ date: TODAY, data }));
     } catch {}
 }
 
-// All 3 charts use same 130-day window so they start from the same date
 function filterDays(entries, days = 130) {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
@@ -131,6 +131,9 @@ function createChart(canvasId, labels, values) {
     const step        = Math.max(1, Math.floor(labels.length / 26));
     const chartLabels = labels.filter((_, i) => i % step === 0 || i === labels.length - 1);
     const chartValues = values.filter((_, i) => i % step === 0 || i === values.length - 1);
+
+    // Track shown months to prevent duplicates like "Jan Jan"
+    const shownMonths = new Set();
 
     const ctx = document.getElementById(canvasId).getContext('2d');
     new Chart(ctx, {
@@ -161,8 +164,11 @@ function createChart(canvasId, labels, values) {
                         autoSkip: true,
                         maxTicksLimit: 7,
                         callback: function(value) {
-                            const label = this.getLabelForValue(value);
-                            return new Date(label).toLocaleString('default', { month: 'short' });
+                            const label     = this.getLabelForValue(value);
+                            const monthName = new Date(label).toLocaleString('default', { month: 'short' });
+                            if (shownMonths.has(monthName)) return null;
+                            shownMonths.add(monthName);
+                            return monthName;
                         }
                     },
                     grid: { display: false }
